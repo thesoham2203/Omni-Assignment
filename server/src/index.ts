@@ -26,6 +26,7 @@ const isProd = process.env['NODE_ENV'] === 'production';
 // Session
 app.use(
   session({
+    name: 'client_request_desk_session',
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     store: new MemoryStore({
       checkPeriod: 86400000, // prune expired entries every 24h
@@ -36,6 +37,7 @@ app.use(
     cookie: {
       httpOnly: true,
       secure: isProd,
+      sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   })
@@ -46,19 +48,19 @@ app.use('/api/auth', authRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/work-items', workItemRoutes);
 
+// Keep API health checks ahead of the production SPA fallback.
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Serve static frontend in production
 if (isProd) {
-  const clientDist = path.join(__dirname, '../../client/dist');
+  const clientDist = path.join(__dirname, '../../../../client/dist');
   app.use(express.static(clientDist));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 }
-
-// Health check
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { act } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ConvertModal from '../components/ConvertModal';
@@ -60,7 +61,9 @@ describe('ConvertModal', () => {
       />
     );
 
-    await user.click(screen.getByText('Confirm Convert'));
+    await act(async () => {
+      await user.click(screen.getByText('Confirm Convert'));
+    });
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
   });
 
@@ -76,7 +79,9 @@ describe('ConvertModal', () => {
       />
     );
 
-    await user.click(screen.getByText('Confirm Convert'));
+    await act(async () => {
+      await user.click(screen.getByText('Confirm Convert'));
+    });
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
@@ -121,7 +126,7 @@ describe('ConvertModal', () => {
     expect(screen.getByText(/Not set — required for conversion/i)).toBeInTheDocument();
   });
 
-  it('shows error message when onConfirm throws 409', async () => {
+  it('shows duplicate error feedback when confirmation is rejected', async () => {
     const user = userEvent.setup();
     const err = Object.assign(new Error('Already converted'), { status: 409 });
     onConfirm.mockRejectedValue(err);
@@ -134,7 +139,9 @@ describe('ConvertModal', () => {
       />
     );
 
-    await user.click(screen.getByText('Confirm Convert'));
+    await act(async () => {
+      await user.click(screen.getByText('Confirm Convert'));
+    });
     await waitFor(() => {
       expect(screen.getByText(/already been converted/i)).toBeInTheDocument();
     });
@@ -154,7 +161,9 @@ describe('ConvertModal', () => {
       />
     );
 
-    await user.click(screen.getByText('Confirm Convert'));
+    await act(async () => {
+      await user.click(screen.getByText('Confirm Convert'));
+    });
     await waitFor(() => {
       expect(screen.getByText('Network error')).toBeInTheDocument();
     });
@@ -176,7 +185,10 @@ describe('ConvertModal', () => {
     fireEvent.click(screen.getByText('Confirm Convert'));
     expect(await screen.findByText('Converting…')).toBeInTheDocument();
 
-    resolve!();
+    await act(async () => {
+      resolve!();
+      await pending;
+    });
   });
 
   it('has correct aria attributes for accessibility', () => {

@@ -6,21 +6,21 @@ import {
   updateRequestSchema,
 } from '../validators/request';
 import { Request as RequestRow, RequestStatus, ActivityLog, User } from '../types/index';
+import { isValidStatus, VALID_TRANSITIONS } from '../shared/requestRules';
 
 const router = Router();
 router.use(authMiddleware);
-
-const VALID_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
-  NEW: ['QUALIFIED', 'CLOSED'],
-  QUALIFIED: ['CLOSED'],
-  CLOSED: [],
-};
 
 // GET /api/requests?status=
 router.get('/', (req: Request, res: Response) => {
   const db = getDb();
   const workspaceId = req.user!.workspaceId;
   const { status } = req.query as { status?: string };
+
+  if (status && !isValidStatus(status)) {
+    res.status(400).json({ error: 'Invalid status filter' });
+    return;
+  }
 
   let query = `
     SELECT r.*, u.name as created_by_name
@@ -30,7 +30,7 @@ router.get('/', (req: Request, res: Response) => {
   `;
   const params: (string | undefined)[] = [workspaceId];
 
-  if (status && ['NEW', 'QUALIFIED', 'CLOSED'].includes(status)) {
+  if (status) {
     query += ' AND r.status = ?';
     params.push(status);
   }
@@ -210,38 +210,35 @@ router.post('/:id/convert', (req: Request, res: Response) => {
   const userId = req.user!.id;
   const { id } = req.params;
 
-  const request = db
-    .prepare('SELECT * FROM requests WHERE id = ? AND workspace_id = ?')
-    .get(id, workspaceId) as RequestRow | undefined;
-
-  if (!request) {
-    res.status(404).json({ error: 'Request not found' });
-    return;
-  }
-
-  if (request.status !== 'QUALIFIED') {
-    res.status(422).json({ error: 'Only QUALIFIED requests can be converted to work items' });
-    return;
-  }
-
-  if (!request.scheduled_date) {
-    res.status(422).json({ error: 'scheduled_date is required to convert a request' });
-    return;
-  }
-
-  // Check for existing work item
-  const existing = db
-    .prepare('SELECT id FROM work_items WHERE request_id = ? AND workspace_id = ?')
-    .get(id, workspaceId);
-
-  if (existing) {
-    res.status(409).json({ error: 'This request has already been converted to a work item' });
-    return;
-  }
-
-  const workItemId = crypto.randomUUID();
-
   const convertTx = db.transaction(() => {
+    const existing = db
+      .prepare('SELECT * FROM work_items WHERE request_id = ? AND workspace_id = ?')
+      .get(id, workspaceId);
+
+    if (existing) {
+      return { workItem: existing, alreadyExisted: true };
+    }
+
+    const request = db
+      .prepare('SELECT * FROM requests WHERE id = ? AND workspace_id = ?')
+      .get(id, workspaceId) as RequestRow | undefined;
+
+    if (!request) {
+      res.status(404).json({ error: 'Request not found' });
+      return null;
+    }
+
+    if (request.status !== 'QUALIFIED') {
+      res.status(422).json({ error: 'Only QUALIFIED requests can be converted to work items' });
+      return null;
+    }
+
+    if (!request.scheduled_date) {
+      res.status(422).json({ error: 'scheduled_date is required to convert a request' });
+      return null;
+    }
+
+    const workItemId = crypto.randomUUID();
     db.prepare(`
       INSERT INTO work_items (id, request_id, workspace_id, created_by)
       VALUES (?, ?, ?, ?)
@@ -260,15 +257,19 @@ router.post('/:id/convert', (req: Request, res: Response) => {
     );
 
     // Note: request status stays QUALIFIED
+    return {
+      workItem: db.prepare('SELECT * FROM work_items WHERE id = ?').get(workItemId),
+      alreadyExisted: false,
+    };
   });
 
-  convertTx();
+  const result = convertTx();
+  if (!result) return;
 
-  const workItem = db
-    .prepare('SELECT * FROM work_items WHERE id = ?')
-    .get(workItemId);
-
-  res.status(201).json(workItem);
+  res.status(result.alreadyExisted ? 200 : 201).json({
+    ...(result.workItem as object),
+    alreadyExisted: result.alreadyExisted,
+  });
 });
 
 export default router;

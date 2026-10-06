@@ -3,15 +3,49 @@ import bcrypt from 'bcrypt';
 import { getDb } from '../db/index';
 import { User } from '../types/index';
 import { AuthUser } from '../types/index';
+import { loginSchema } from '../validators/auth';
 
 const router = Router();
 
+const WINDOW_MS = 15 * 60 * 1000;
+const MAX_FAILED_ATTEMPTS = 5;
+const attempts = new Map<string, { count: number; resetAt: number }>();
+
+function attemptKey(email: string, ip?: string): string {
+  return `${email.toLowerCase()}|${ip ?? 'unknown'}`;
+}
+
+function currentAttempt(key: string) {
+  const now = Date.now();
+  const existing = attempts.get(key);
+  if (!existing || existing.resetAt <= now) {
+    const fresh = { count: 0, resetAt: now + WINDOW_MS };
+    attempts.set(key, fresh);
+    return fresh;
+  }
+  return existing;
+}
+
+export function resetLoginRateLimit(): void {
+  attempts.clear();
+}
+
 // POST /api/auth/login
 router.post('/login', async (req: Request, res: Response) => {
-  const { email, password } = req.body as { email?: string; password?: string };
+  const parseResult = loginSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: 'Validation failed', details: parseResult.error.flatten() });
+    return;
+  }
 
-  if (!email || !password) {
-    res.status(400).json({ error: 'Email and password are required' });
+  const { email, password } = parseResult.data;
+
+  const key = attemptKey(email, req.ip);
+  const attempt = currentAttempt(key);
+  if (attempt.count >= MAX_FAILED_ATTEMPTS) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((attempt.resetAt - Date.now()) / 1000));
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+    res.status(429).json({ error: 'Too many failed login attempts. Please try again later.' });
     return;
   }
 
@@ -19,15 +53,19 @@ router.post('/login', async (req: Request, res: Response) => {
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as User | undefined;
 
   if (!user) {
+    attempt.count += 1;
     res.status(401).json({ error: 'Invalid credentials' });
     return;
   }
 
   const match = await bcrypt.compare(password, user.password_hash);
   if (!match) {
+    attempt.count += 1;
     res.status(401).json({ error: 'Invalid credentials' });
     return;
   }
+
+  attempts.delete(key);
 
   const sessionUser: AuthUser = {
     id: user.id,

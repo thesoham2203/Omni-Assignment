@@ -1,0 +1,20 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_PATH: /app/server/data/app.db
+      SESSION_SECRET: change-this-for-production
+    volumes:
+      - request-desk-data:/app/server/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:3001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  request-desk-data:

@@ -1,124 +1,54 @@
 # Client Request Desk
 
-A production-style web application for local businesses to manage client requests. Team members receive customer requests, review them, and convert approved (QUALIFIED) requests into actionable work items.
+Client Request Desk is a small full-stack application for local businesses to receive customer requests, review them, and convert approved requests into work items.
 
-## Architecture
+The app is workspace-aware: each signed-in user belongs to one workspace, and every request, work item, and activity record is scoped to that workspace.
 
-```
-client-request-desk/
-├── client/          # React 18 + TypeScript + Vite + Tailwind CSS (SPA)
-└── server/          # Node.js + Express + TypeScript + SQLite
-```
-
-### Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS, React Router v6 |
-| Backend | Node.js, Express, TypeScript (tsx for dev) |
-| Database | SQLite via better-sqlite3 (synchronous, no ORM) |
-| Auth | express-session + bcrypt, SQLite session store |
-| Validation | Zod (server-side) |
-| Testing | Vitest + Supertest (backend), Vitest + RTL (frontend) |
-| Monorepo | npm workspaces |
-
-### Database Schema
-
-- **workspaces** — multi-tenant isolation unit
-- **users** — email/password auth, workspace-scoped
-- **requests** — core entity with status lifecycle (NEW → QUALIFIED → CLOSED)
-- **work_items** — created from QUALIFIED requests (1:1)
-- **activity_log** — immutable audit trail for every mutation
-
-## Key Decisions & Trade-offs
-
-### Multi-tenant Workspace Isolation
-Every SQL query is `WHERE workspace_id = ?` bound to `req.user.workspaceId` from the session — never from URL params or request body. This prevents any cross-workspace data leakage.
-
-### Status Transitions
-Only three valid transitions:
-- `NEW → QUALIFIED`
-- `NEW → CLOSED`
-- `QUALIFIED → CLOSED`
-
-`CLOSED` is terminal. All other transitions return `422 Unprocessable Entity`.
-
-### Conversion Flow
-`POST /requests/:id/convert` creates a work item but does **not** change the request's status (stays `QUALIFIED`). Validations:
-- Request must be `QUALIFIED` → 422
-- `scheduled_date` must be set → 422
-- Cannot convert twice (UNIQUE constraint on `request_id`) → 409
-
-### SQLite Synchronous Access
-`better-sqlite3` is used synchronously — no async/await for DB operations. This simplifies the code considerably and is perfectly adequate for the expected load of a local-business tool.
-
-### Session Auth vs JWT
-Session cookies with SQLite backing store were chosen over JWTs because:
-1. Simpler logout (destroy server-side session)
-2. No token refresh complexity
-3. Works well for a web app (not a mobile/API-first product)
-
-## Assumptions
-
-1. Single user per workspace in the seed (easily extensible)
-2. No pagination on request lists (acceptable for small teams)
-3. `scheduled_date` is stored as `TEXT` in `YYYY-MM-DD` format (SQLite has no native DATE type)
-4. All times stored as ISO 8601 UTC strings
-
-## What I'd Improve With More Time
-
-1. **Pagination** — Add cursor-based pagination to the request list
-2. **Real-time updates** — WebSocket or SSE for live activity feed
-3. **Role-based access control** — Admin vs. team member roles
-4. **Email notifications** — Notify customers on status changes
-5. **File attachments** — Allow attaching photos/docs to requests
-6. **Search & filters** — Full-text search across customer names and descriptions
-7. **CI/CD pipeline** — GitHub Actions for test + build + deploy
-8. **Docker** — Containerize for consistent deployment
-9. **Rate limiting** — Protect login endpoint from brute force
-10. **Optimistic updates** — Improve UX by updating UI before server confirms
-
-## AI Tools Disclosure
-
-This application was built with AI assistance (Google Gemini) for scaffolding, boilerplate generation, and code structure guidance. All business logic, architecture decisions, and security considerations were designed according to the assignment requirements.
-
----
-
-## Demo Credentials
-
-| Workspace | Email | Password |
-|-----------|-------|----------|
-| Acme Corp | alice@acme.com | acme1234 |
-| Globe Ltd | bob@globeltd.com | globe1234 |
-
----
-
-## Setup & Running
+## Quick Start
 
 ### Prerequisites
+
 - Node.js 20+
 - npm 9+
 
-### Install Dependencies
+### Install
 
 ```bash
 npm install
 ```
 
-### Environment Setup
+### Environment
 
 ```bash
 cp .env.example server/.env
-# Edit server/.env if needed (defaults work for development)
 ```
 
-### Seed Database
+The defaults in `.env.example` work for local development. Do not commit `server/.env`.
+
+### Docker
+
+With Docker Engine and Docker Compose installed:
+
+```bash
+docker compose up --build
+```
+
+The application is available at http://localhost:3001. SQLite data is persisted in `server/data`. Stop the stack with `docker compose down`; remove the local database separately when a fresh seed is needed.
+
+### Seed the Database
 
 ```bash
 npm run seed
 ```
 
-### Development (both client + server)
+The seed creates two workspaces, one user in each workspace, and sample customer requests.
+
+| Workspace | Email | Password |
+| --- | --- | --- |
+| Acme Corp | `alice@acme.com` | `acme1234` |
+| Globe Ltd | `bob@globeltd.com` | `globe1234` |
+
+### Development
 
 ```bash
 npm run dev
@@ -126,18 +56,13 @@ npm run dev
 
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:3001
-- Vite proxies `/api` requests to the backend automatically
+- Vite proxies `/api` calls to the backend.
 
-### Run Tests
+### Tests
 
 ```bash
-# All tests
 npm test
-
-# Backend tests only
 npm run test:server
-
-# Frontend tests only
 npm run test:client
 ```
 
@@ -148,30 +73,168 @@ npm run build
 npm start
 ```
 
-The server serves the built frontend from `client/dist` in production.
+The production server serves the built frontend from `client/dist`.
 
-## Available npm Scripts
+## Architecture
 
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start both client (Vite) and server (tsx watch) |
-| `npm run build` | Build client (Vite) + server (tsc) |
-| `npm start` | Start production server |
-| `npm test` | Run all tests |
-| `npm run test:server` | Run backend tests (Vitest + Supertest) |
-| `npm run test:client` | Run frontend tests (Vitest + RTL) |
-| `npm run seed` | Seed the database with demo data |
+```text
+client-request-desk/
+|-- client/   React 18 + TypeScript + Vite + Tailwind CSS
+|-- server/   Node.js + Express + TypeScript + SQLite
+|-- package.json
+|-- .env.example
+|-- README.md
+```
+
+### Tech Stack
+
+| Layer | Choice |
+| --- | --- |
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, React Router |
+| Backend | Node.js, Express, TypeScript |
+| Database | SQLite with `better-sqlite3` |
+| Auth | Mock email/password login with `express-session` and bcrypt |
+| Validation | Zod on the API boundary |
+| Testing | Vitest, Supertest, React Testing Library |
+| Repository | npm workspaces with `client` and `server` packages |
+
+### Data Model
+
+- `workspaces`: tenant boundary.
+- `users`: authenticated users, each tied to a workspace.
+- `requests`: customer requests with `NEW`, `QUALIFIED`, or `CLOSED` status.
+- `work_items`: one work item per converted request.
+- `activity_log`: append-only timeline for creates, updates, status changes, and conversions.
+
+The schema is defined in `server/src/db/migrate.ts`. Seed data is defined in `server/src/db/seed.ts`.
+
+## Assignment Requirement Coverage
+
+### Workspace-Aware API
+
+- Seeds two workspaces, one user per workspace, and sample requests.
+- Provides mock session authentication through `/api/auth/login`, `/api/auth/logout`, and `/api/auth/me`.
+- Supports listing, creating, viewing, and updating customer requests.
+- Supports request statuses `NEW`, `QUALIFIED`, and `CLOSED`.
+- Converts a `QUALIFIED` request into a work item.
+- Prevents cross-workspace reads and writes by deriving `workspaceId` from the authenticated session, never from request input.
+- Uses Zod validation and returns useful HTTP errors such as `400`, `401`, `404`, `409`, and `422`.
+
+### Human-Confirmed Action
+
+The frontend conversion modal shows:
+
+- customer name
+- requested service
+- scheduled date
+
+The backend conversion endpoint:
+
+- rejects non-`QUALIFIED` requests with `422`
+- rejects requests without `scheduled_date` with `422`
+- prevents duplicate conversion with a unique `work_items.request_id` constraint and an idempotent `200` response for retries
+- writes an activity entry recording the conversion
+
+### Frontend
+
+The React app includes:
+
+- login screen
+- protected routes
+- request list with status filtering
+- request detail page with activity timeline
+- create and edit request forms
+- work item list
+- confirmed conversion flow
+- loading, empty, validation, and API error states
+- responsive layout for desktop and mobile widths
+
+### Tests
+
+Backend tests cover the highest-risk assignment requirements:
+
+- workspace isolation
+- duplicate conversion prevention
+- conversion validation
+- status transition validation
+- request validation errors
+
+Frontend tests cover the conversion confirmation interaction, including required confirmation details, disabled state when a scheduled date is missing, success flow, and API error display.
 
 ## API Reference
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/login` | Login with email + password |
-| POST | `/api/auth/logout` | Destroy session |
-| GET | `/api/auth/me` | Get current user + workspace |
-| GET | `/api/requests?status=` | List requests (workspace-scoped) |
-| POST | `/api/requests` | Create new request |
-| GET | `/api/requests/:id` | Request detail + activity timeline |
-| PATCH | `/api/requests/:id` | Update request fields and/or status |
-| POST | `/api/requests/:id/convert` | Convert QUALIFIED request → work item |
-| GET | `/api/work-items` | List work items (workspace-scoped) |
+| --- | --- | --- |
+| `POST` | `/api/auth/login` | Log in with seeded credentials |
+| `POST` | `/api/auth/logout` | Destroy the current session |
+| `GET` | `/api/auth/me` | Return current user and workspace |
+| `GET` | `/api/requests?status=NEW` | List workspace-scoped requests with optional status filter |
+| `POST` | `/api/requests` | Create a customer request |
+| `GET` | `/api/requests/:id` | View request details, activity timeline, and work item state |
+| `PATCH` | `/api/requests/:id` | Update request fields or status |
+| `POST` | `/api/requests/:id/convert` | Convert a qualified request into a work item |
+| `GET` | `/api/work-items` | List workspace-scoped work items |
+
+## Key Decisions
+
+### Workspace Isolation
+
+The API never trusts a workspace ID from the client. After login, the session identifies the user and workspace. Route handlers always query using `WHERE workspace_id = ?` with the session workspace ID.
+
+If a user manually changes a request ID in the URL to another workspace's request, the query returns no record and the API responds with `404`.
+
+### Conversion Idempotency
+
+`work_items.request_id` is unique. Conversion checks for an existing work item and inserts inside one SQLite transaction, so retries and concurrent submissions return the same work item instead of creating duplicates. The first call returns `201`; later calls return `200` with `alreadyExisted: true`.
+
+### Status Rules
+
+Allowed transitions:
+
+- `NEW` to `QUALIFIED`
+- `NEW` to `CLOSED`
+- `QUALIFIED` to `CLOSED`
+
+`CLOSED` is terminal. Conversion creates a work item but leaves the request status as `QUALIFIED`, so the original request remains an approved source record.
+
+### Mock Auth
+
+The assignment allowed simple login or documented mock auth. This implementation uses real password hashing and server-side sessions, while keeping the seed credentials simple for review.
+
+## Assumptions and Trade-offs
+
+- One seeded user per workspace is enough to demonstrate workspace isolation.
+- SQLite is used instead of PostgreSQL to keep setup fast and reproducible.
+- Raw SQL is used instead of an ORM because the schema is small and the isolation rules are easy to audit.
+- Request lists are not paginated because the assignment scope is a small local-business workflow.
+- `scheduled_date` is stored as `YYYY-MM-DD` text in SQLite.
+- Activity details are stored as readable text rather than structured JSON because the UI only needs a timeline summary.
+
+## What I Would Improve With More Time
+
+- Add pagination and full-text search for larger request lists.
+- Add role-based access control for admins and staff.
+- Add rate limiting and stronger session cookie settings for production.
+- Add CSRF protection for session-backed mutations.
+- Add structured audit log metadata.
+- Add PostgreSQL-backed deployment and a shared production session store.
+- Add optimistic UI updates and toast notifications for smoother interactions.
+- Add the optional simulated assistant panel that suggests next actions without mutating data.
+
+## AI Tools Used
+
+AI assistance was used for scaffolding, implementation support, and review of requirement coverage. The output was checked against the assignment requirements, verified with automated tests, and adjusted where the generated plan overclaimed optional work.
+
+## Follow-Up Discussion Notes
+
+Be ready to demonstrate:
+
+1. Log in as Alice and show Acme requests.
+2. Filter requests by status.
+3. Open a request detail page and show the activity timeline.
+4. Create or edit a request.
+5. Convert a `QUALIFIED` request with the confirmation modal.
+6. Submit conversion twice and show the idempotent `200` duplicate-prevention behavior.
+7. Explain that workspace isolation is enforced by session-derived `workspaceId` plus workspace-scoped SQL queries.
+
+One production security improvement: add CSRF protection and a shared session store, because this app uses session cookies for authenticated mutations. Schema changes are applied through ordered migrations, and `npm run typecheck` plus the CI workflow verify the workspaces before deployment.

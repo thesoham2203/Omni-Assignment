@@ -71,13 +71,41 @@ describe('Conversion Tests', () => {
     expect((res.body as { request_id: string }).request_id).toBe('req-qual');
   });
 
-  it('returns 409 when converting the same request again', async () => {
+  it('returns the existing work item when converting the same request again', async () => {
     const res = await request(app)
       .post('/api/requests/req-qual/convert')
       .set('Cookie', cookie);
 
-    expect(res.status).toBe(409);
-    expect((res.body as { error: string }).error).toMatch(/already been converted/i);
+    expect(res.status).toBe(200);
+    expect((res.body as { request_id: string; alreadyExisted: boolean }).request_id).toBe('req-qual');
+    expect((res.body as { alreadyExisted: boolean }).alreadyExisted).toBe(true);
+  });
+
+  it('creates only one work item when conversion requests race', async () => {
+    const createRes = await request(app)
+      .post('/api/requests')
+      .set('Cookie', cookie)
+      .send({
+        customer_name: 'Race Customer',
+        service: 'Race Service',
+        scheduled_date: '2024-07-01',
+      });
+    const reqId = (createRes.body as { id: string }).id;
+
+    await request(app)
+      .patch(`/api/requests/${reqId}`)
+      .set('Cookie', cookie)
+      .send({ status: 'QUALIFIED' })
+      .expect(200);
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        request(app).post(`/api/requests/${reqId}/convert`).set('Cookie', cookie)
+      )
+    );
+
+    expect(results.map((result) => result.status).sort()).toEqual([200, 200, 200, 200, 201]);
+    expect(new Set(results.map((result) => result.body.id)).size).toBe(1);
   });
 
   it('returns 422 when converting without scheduled_date', async () => {
@@ -87,6 +115,20 @@ describe('Conversion Tests', () => {
 
     expect(res.status).toBe(422);
     expect((res.body as { error: string }).error).toMatch(/scheduled_date/i);
+  });
+
+  it('rejects blank names and impossible calendar dates', async () => {
+    const blankName = await request(app)
+      .post('/api/requests')
+      .set('Cookie', cookie)
+      .send({ customer_name: '   ', service: 'Service' });
+    expect(blankName.status).toBe(400);
+
+    const invalidDate = await request(app)
+      .post('/api/requests')
+      .set('Cookie', cookie)
+      .send({ customer_name: 'Customer', service: 'Service', scheduled_date: '2024-02-30' });
+    expect(invalidDate.status).toBe(400);
   });
 
   it('returns 422 when converting a NEW request', async () => {

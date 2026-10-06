@@ -35,8 +35,14 @@ describe('Workspace Isolation', () => {
       VALUES (?, ?, ?, ?, 'NEW', ?)
     `).run('req-ws1', 'ws-test1', 'Customer WS1', 'Service WS1', 'user-t1');
 
+    db.prepare(`
+      INSERT INTO requests (id, workspace_id, customer_name, service, scheduled_date, status, created_by)
+      VALUES (?, ?, ?, ?, ?, 'QUALIFIED', ?)
+    `).run('req-ws2', 'ws-test2', 'Customer WS2', 'Service WS2', '2024-06-01', 'user-t2');
+
     const { default: authRoutes } = await import('../src/routes/auth');
     const { default: requestRoutes } = await import('../src/routes/requests');
+    const { default: workItemRoutes } = await import('../src/routes/workItems');
 
     app = express();
     app.use(express.json());
@@ -49,6 +55,7 @@ describe('Workspace Isolation', () => {
     );
     app.use('/api/auth', authRoutes);
     app.use('/api/requests', requestRoutes);
+    app.use('/api/work-items', workItemRoutes);
   });
 
   it('user2 cannot see requests from workspace1', async () => {
@@ -107,5 +114,59 @@ describe('Workspace Isolation', () => {
       .send({ customer_name: 'Hacked Name' });
 
     expect(res.status).toBe(404);
+  });
+
+  it('rejects client-supplied workspace fields', async () => {
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'user1@test.com', password: 'pass1234' });
+    const cookie = loginRes.headers['set-cookie'];
+
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Cookie', cookie)
+      .send({
+        customer_name: 'Safe Customer',
+        service: 'Safe Service',
+        workspace_id: 'ws-test2',
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('blocks cross-workspace conversion and work-item reads', async () => {
+    const user1Login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'user1@test.com', password: 'pass1234' });
+    const user1Cookie = user1Login.headers['set-cookie'];
+
+    const convert = await request(app)
+      .post('/api/requests/req-ws2/convert')
+      .set('Cookie', user1Cookie);
+    expect(convert.status).toBe(404);
+
+    const user2Login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'user2@test.com', password: 'pass5678' });
+    const user2Cookie = user2Login.headers['set-cookie'];
+    await request(app)
+      .post('/api/requests/req-ws2/convert')
+      .set('Cookie', user2Cookie)
+      .expect(201);
+
+    const user1Items = await request(app)
+      .get('/api/work-items')
+      .set('Cookie', user1Cookie);
+    expect(user1Items.status).toBe(200);
+    expect(user1Items.body).toEqual([]);
+  });
+
+  it('validates login input before querying credentials', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'not-an-email', password: '' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Validation failed');
   });
 });
