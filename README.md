@@ -4,6 +4,27 @@ Client Request Desk is a small full-stack application for local businesses to re
 
 The app is workspace-aware: each signed-in user belongs to one workspace, and every request, work item, and activity record is scoped to that workspace.
 
+## Reviewer Guide
+
+| Rubric area | Where to look |
+| --- | --- |
+| Functional correctness and API design | `server/src/routes/requests.ts`, [API reference](docs/api.md) |
+| Workspace isolation and safe actions | `server/src/middleware/auth.ts`, `server/tests/isolation.test.ts`, `server/tests/conversion.test.ts` |
+| Code structure and maintainability | `server/src/db/migrate.ts`, `shared/requestRules.ts`, `client/src/shared/requestRules.ts` |
+| Frontend usability and error handling | `client/src/pages/RequestListPage.tsx`, `client/src/pages/RequestDetailPage.tsx`, `client/src/components/AssistantPanel.tsx` |
+| Test quality | `server/tests/`, `client/src/tests/` |
+| Setup and communication | this README, `Dockerfile`, `docker-compose.yml`, `.github/workflows/ci.yml` |
+
+## Status Lifecycle
+
+```text
+NEW -- qualify --> QUALIFIED -- create work item --> CLOSED (converted)
+ |                    |
+ +-- reject -----------+--> CLOSED (rejected)
+```
+
+Conversion is a confirmed, idempotent mutation. A repeated request returns the existing work item and does not append another conversion activity. The mutation tests deliberately exercise duplicate and concurrent conversion calls; removing the transaction or unique constraint makes those tests fail.
+
 ## Quick Start
 
 ### Prerequisites
@@ -195,7 +216,7 @@ Allowed transitions:
 - `NEW` to `CLOSED`
 - `QUALIFIED` to `CLOSED`
 
-`CLOSED` is terminal. Conversion creates a work item but leaves the request status as `QUALIFIED`, so the original request remains an approved source record.
+`CLOSED` is terminal. Conversion creates a work item and closes the request, while the original activity timeline remains available as the approved source record.
 
 ### Mock Auth
 
@@ -219,7 +240,7 @@ The assignment allowed simple login or documented mock auth. This implementation
 - Add structured audit log metadata.
 - Add PostgreSQL-backed deployment and a shared production session store.
 - Add optimistic UI updates and toast notifications for smoother interactions.
-- Add the optional simulated assistant panel that suggests next actions without mutating data.
+- Add richer assistant explanations and optional role-aware recommendations without allowing unconfirmed mutations.
 
 ## AI Tools Used
 

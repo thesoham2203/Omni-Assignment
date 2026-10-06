@@ -256,7 +256,12 @@ router.post('/:id/convert', (req: Request, res: Response) => {
       userId
     );
 
-    // Note: request status stays QUALIFIED
+    db.prepare(`
+      UPDATE requests
+      SET status = 'CLOSED', updated_at = ?
+      WHERE id = ? AND workspace_id = ?
+    `).run(new Date().toISOString(), id, workspaceId);
+
     return {
       workItem: db.prepare('SELECT * FROM work_items WHERE id = ?').get(workItemId),
       alreadyExisted: false,

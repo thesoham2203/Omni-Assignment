@@ -1,16 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { RequestDetail, RequestStatus } from '../types/index';
 import StatusBadge from '../components/StatusBadge';
 import ActivityTimeline from '../components/ActivityTimeline';
 import ConvertModal from '../components/ConvertModal';
-
-const VALID_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
-  NEW: ['QUALIFIED', 'CLOSED'],
-  QUALIFIED: ['CLOSED'],
-  CLOSED: [],
-};
+import AssistantPanel from '../components/AssistantPanel';
+import { VALID_TRANSITIONS } from '../shared/requestRules';
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString(undefined, {
@@ -22,6 +18,7 @@ function formatDate(dateStr: string): string {
 
 export default function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [detail, setDetail] = useState<RequestDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +67,14 @@ export default function RequestDetailPage() {
     await api.post(`/requests/${id}/convert`);
     await fetchDetail();
     showToast('Request converted to work item!', 'success');
+  };
+
+  const handleAssistantAction = (action: 'qualify' | 'convert' | 'edit') => {
+    if (action === 'qualify' && window.confirm('Qualify this request?')) {
+      void handleStatusChange('QUALIFIED');
+    }
+    if (action === 'convert') setShowConvert(true);
+    if (action === 'edit') navigate(`/requests/${id}/edit`);
   };
 
   if (loading) {
@@ -131,6 +136,7 @@ export default function RequestDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main details */}
         <div className="lg:col-span-2 space-y-6">
+          <AssistantPanel request={detail} onAction={handleAssistantAction} />
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
               Details
@@ -215,6 +221,12 @@ export default function RequestDetailPage() {
                   ⚡ Convert to Work Item
                 </button>
               )}
+            </div>
+          )}
+
+          {detail.work_item && (
+            <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-sm text-green-800">
+              Converted to work item <strong>{detail.work_item.id}</strong>.
             </div>
           )}
 

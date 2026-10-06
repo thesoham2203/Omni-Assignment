@@ -140,13 +140,13 @@ describe('Conversion Tests', () => {
     expect((res.body as { error: string }).error).toMatch(/QUALIFIED/i);
   });
 
-  it('request stays QUALIFIED after conversion', async () => {
+  it('closes the request after conversion', async () => {
     const res = await request(app)
       .get('/api/requests/req-qual')
       .set('Cookie', cookie);
 
     expect(res.status).toBe(200);
-    expect((res.body as { status: string }).status).toBe('QUALIFIED');
+    expect((res.body as { status: string }).status).toBe('CLOSED');
   });
 
   it('returns 422 on invalid status transition (CLOSED → NEW)', async () => {
