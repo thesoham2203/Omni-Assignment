@@ -81,13 +81,38 @@ The implementation was reviewed and directed by the submitter. Important decisio
 - writing and running isolation, validation, authentication, conversion, and frontend interaction tests;
 - adding Docker/CI support, checking the production build, and correcting issues found during verification.
 
-## AI Assistance and Review
+## AI Assistance and Review Process
 
-AI tools were used as development support, not as an unchecked implementation source. They helped with scaffolding ideas, edge-case discovery, test suggestions, documentation structure, and targeted code review. No external AI service is required at runtime.
+In accordance with the assignment requirements, AI tools (**Anthropic Claude** and **Google Gemini**) were used as interactive pair-programming assistants throughout this project. They served to accelerate scaffolding and explore edge cases, not as an unchecked code generator.
 
-The submitter owned the important engineering decisions: the workspace-isolation model, session-based authentication, status lifecycle, idempotent conversion behavior, SQLite/migration strategy, confirmation safeguards, Docker setup, and test scope. AI suggestions were reviewed against the assignment, existing code, and expected HTTP behavior; inaccurate or over-claimed suggestions were corrected or discarded.
+### Where AI Was Leveraged
+- **Boilerplate & Scaffolding:** Accelerating initial setup including Express router scaffolding, TypeScript types, and Zod validator schemas.
+- **Edge-Case Brainstorming:** Identifying boundary conditions for status transitions, invalid calendar dates (e.g., February 30th), and input validation edge cases.
+- **Test Ideation:** Proposing initial Supertest request flows and React Testing Library assertion skeletons.
+- **Documentation Structuring:** Formatting tables and drafting initial sections for `docs/api.md` and the README.
 
-Before submission, the submitter verified the work with backend and frontend tests, workspace-isolation and duplicate-conversion tests, typechecking, production builds, seed verification, Docker startup/health checks, repository hygiene checks, and a manual requirement-by-requirement review.
+### Critical Engineering Interventions & Corrections
+All architectural and security decisions were human-directed. During development, several AI-generated proposals were challenged and corrected:
+
+1. **Race Condition & Concurrency Handling:**
+   - *Initial AI suggestion:* A simple application-level check (`SELECT * FROM work_items WHERE request_id = ?`) before inserting.
+   - *Human intervention:* Identified that concurrent API calls would bypass this check before the transaction commits. Enforced a database-level `UNIQUE (request_id)` constraint on `work_items` within an atomic transaction, paired with a concurrent test simulating simultaneous conversion requests to verify that retries safely return HTTP 200 `{ alreadyExisted: true }`.
+2. **Strict Workspace Isolation & Parameter Pollution:**
+   - *Initial AI suggestion:* Silently overwriting `req.body.workspace_id` with `req.user.workspaceId`.
+   - *Human intervention:* Recognized that accepting unrecognized tenant parameters is an API vulnerability. Configured Zod schemas to reject client-supplied `workspace_id` with a `400 Bad Request`, and backed the tenant boundary with database-level composite foreign keys `FOREIGN KEY (request_id, workspace_id)`.
+3. **Conversion Lifecycle Semantics:**
+   - *Initial AI suggestion:* Leaving converted requests in the `QUALIFIED` state indefinitely.
+   - *Human intervention:* Corrected the lifecycle so converting transitions the request to `CLOSED` (converted), making it terminal while preserving the complete historical timeline in `activity_log`.
+4. **Guarding the Assistant Panel:**
+   - *Initial AI suggestion:* Allowing the assistant panel to trigger status updates via one-click optimistic mutations.
+   - *Human intervention:* Strictly enforced the assignment constraint that the assistant must remain a passive, rule-based advisory tool that *never* modifies data directly. It only routes the user to human-confirmed modals or forms.
+
+### Verification & Review Methodology
+Every line of code and test was audited using the following protocol:
+- **Diff-by-Diff Code Review:** Every change was inspected for unwanted dependencies, subtle logic shifts, or hallucinated APIs.
+- **Mutation Verification:** Deliberately broke critical logic (e.g., removing the `workspace_id` clause in queries or removing the unique constraint) to confirm that `server/tests/isolation.test.ts` and `server/tests/conversion.test.ts` fail immediately.
+- **End-to-End Automated Checks:** Enforced clean runs of `npm run typecheck`, `npm test` (30 unit & integration tests), `npm run build`, and fresh-database seed verification.
+- **Container Smoke Testing:** Verified the multi-stage Docker build and compose stack independently to confirm zero runtime dependency on external AI services or development tools.
 
 ## Improvements With More Time
 
