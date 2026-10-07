@@ -83,7 +83,11 @@ The implementation was reviewed and directed by the submitter. Important decisio
 
 ## AI Assistance and Review
 
-AI tools were used for scaffolding suggestions, implementation support, test ideas, documentation structure, and code review. The submitter made the architecture and workflow decisions, inspected the generated changes, rejected or corrected inaccurate suggestions, and verified the result with automated tests, typechecking, production builds, Docker startup checks, and manual requirement review.
+AI tools were used as development support, not as an unchecked implementation source. They helped with scaffolding ideas, edge-case discovery, test suggestions, documentation structure, and targeted code review. No external AI service is required at runtime.
+
+The submitter owned the important engineering decisions: the workspace-isolation model, session-based authentication, status lifecycle, idempotent conversion behavior, SQLite/migration strategy, confirmation safeguards, Docker setup, and test scope. AI suggestions were reviewed against the assignment, existing code, and expected HTTP behavior; inaccurate or over-claimed suggestions were corrected or discarded.
+
+Before submission, the submitter verified the work with backend and frontend tests, workspace-isolation and duplicate-conversion tests, typechecking, production builds, seed verification, Docker startup/health checks, repository hygiene checks, and a manual requirement-by-requirement review.
 
 ## Improvements With More Time
 
