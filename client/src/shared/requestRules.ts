@@ -12,10 +12,10 @@ export function nextActionForRequest(status: RequestStatus, hasDate: boolean, co
     };
   }
 
-  if (status === 'QUALIFIED' && converted) {
+  if (converted) {
     return {
       title: 'Review work item',
-      reason: 'A work item already exists for this qualified request.',
+      reason: 'A work item has been created for this request.',
       action: null,
     };
   }
